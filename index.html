@@ -14,6 +14,7 @@ rect { fill: none; pointer-events: all; }
 #labels { font-size: large; font-weight: bold; }
 #words { font-size: medium; margin: 10 60 10 60; }
 .doc { font-size: medium; margin: 10 50 10 50; text-align: justify; font-family: "Old Standard TT", Times;}
+td, th { padding: 1px 4px;}
 </style>
 </head>
 <body>
@@ -28,6 +29,7 @@ rect { fill: none; pointer-events: all; }
 	<div id="log"></div>
 	
         <div id="confusion"></div>
+	<div id="stats"></div>
         <div id="loading"><h3>Reading and analyzing texts. Please wait.</h3></div>
 <script>
 
@@ -54,7 +56,8 @@ var wordColors = {};
 
 var confusion;
 
-// PMB: Set to true if the input is East Asian text
+/* PMB: Set to true if the input has this specific format for the document IDs: collection_title_author
+ *      and if the document texts contain multibyte characters (e.g., Chinese idiographic writing systems). */
 var isKT = false;
 
 var wordPattern = XRegExp("\\p{L}[\\p{L}\\p{P}]*\\p{L}", "g");
@@ -76,13 +79,13 @@ function plotConfusion() {
 	var vis = d3.select("#confusion")
 	.append("svg:svg")
 	.attr("width", w)
-	.attr("height", h);
+        .attr("height", h);
 
 	var maxCell = d3.max(confusion, function( row ) { return d3.max(row); });
 
 	var labelScale = d3.scale.ordinal().domain(d3.range(labels.length)).rangePoints([left, right]);
 	var radiusScale = d3.scale.sqrt().domain([0, maxCell]).range([0, 2 * right / labels.length]);
-	
+        
 	labels.forEach(function (label, labelID) {
 		vis.append("text")
 			.attr("class", "ver")
@@ -112,7 +115,7 @@ function plotConfusion() {
 			.style("stroke-width", 10)
 	});
 
-	confusion.forEach(function(cells, row) {
+        confusion.forEach(function(cells, row) {
 		cells.forEach(function(count, col) {
 		    vis.append("circle")
 			.attr("cx", function(link) { return labelScale(col); })
@@ -363,16 +366,89 @@ function leaveOneOut( doc ) {
         labelSums[doc.labelID] += doc.tokens.length;
 }
 
+function tabulate(data, columns) {        
+  var statsTable = d3.select("#stats").append("table"),
+      thead = statsTable.append("thead"),
+      tbody = statsTable.append("tbody");
+
+  thead.append("tr")
+       .selectAll("th")
+       .data(columns)
+       .enter()
+       .append("th")
+         .text(function(column) { return column; });
+
+  var rows = tbody.selectAll("tr")
+      .data(data)
+      .enter()
+      .append("tr");
+
+  var cells = rows.selectAll("td")
+      .data(function(row) {
+        return columns.map(function(column) {
+          return {column: column, value: row[column]};
+        });
+      })
+      .enter()
+      .append("td")
+      .html(function(d) { return d.value; });
+
+  return statsTable;
+
+}
+
+function showStats() {
+
+  var TableData = [];
+
+  var labelHumanStories = {};
+  var labelNBstories = {};
+  var labelMatches = {};
+  
+  labels.forEach(function (label, labelID) {
+    labelHumanStories[labelID] = 0;
+    labelNBstories[labelID] = 0;
+    labelMatches[labelID] = 0;
+  });
+
+  documents.forEach(function (doc) {
+
+    labelHumanStories[doc.labelID] += 1;
+    labelNBstories[doc.maxLabelID] += 1;
+
+    if (doc.labelID == doc.maxLabelID) {
+      labelMatches[doc.labelID] += 1;
+    }
+ 
+  });
+  
+  var statsColumns = ['Original label', 'Stories w/orig. label', 'Stories w/label from NB', 'Matches', 'Precision', 'Recall', 'F-score'];
+
+  labels.forEach(function (label, labelID) {
+
+    var precision = parseFloat((labelMatches[labelID] / labelNBstories[labelID]).toFixed(4));
+    var recall = parseFloat((labelMatches[labelID] / labelHumanStories[labelID]).toFixed(4));
+    var fscore = parseFloat((2*((precision * recall) / (precision + recall))).toFixed(4));
+
+    var labelStats = {'Original label': label, 'Stories w/orig. label': labelHumanStories[labelID], 'Stories w/label from NB': labelNBstories[labelID], 'Matches': labelMatches[labelID], 'Precision': precision, 'Recall': recall, 'F-score': fscore};
+
+    TableData.push(labelStats);
+
+  });
+
+  tabulate(TableData, statsColumns);
+
+}
+
 d3.text("input.txt", 
 function (error, text) {
-	//console.log("got docs");
 	//var start = +new Date();
 	documents = d3.tsv.parseRows(text, parseLine);
 	//var end = +new Date();
-	//console.log("parsed " + (end - start));
 		
-	confusion = Array(labels.length);
-	for (var row = 0; row < labels.length; row++) {
+        confusion = Array(labels.length);
+
+        for (var row = 0; row < labels.length; row++) {
 		confusion[row] = Array(labels.length);
 		for (var col = 0; col < labels.length; col++) {
 			confusion[row][col] = 0;
@@ -380,11 +456,11 @@ function (error, text) {
 	}
 	
 	var maxCount = d3.max(d3.keys(wordLabelCounts), function (wordID) { return d3.max(d3.values(wordLabelCounts[wordID])); });
-	//start = +new Date();
-	documents.forEach(function (doc) { leaveOneOut(doc); });
-	//end = +new Date();
-	//console.log("classified " + (end - start));
-	plotConfusion();
+        documents.forEach(function (doc) { leaveOneOut(doc); });
+        
+        plotConfusion();
+
+        showStats();
 });
 
 </script>
