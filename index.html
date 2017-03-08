@@ -15,6 +15,8 @@ rect { fill: none; pointer-events: all; }
 #words { font-size: medium; margin: 10 60 10 60; }
 .doc { font-size: medium; margin: 10 50 10 50; text-align: justify; font-family: "Old Standard TT", Times;}
 td, th { padding: 1px 4px;}
+div.tooltip { color: #222; background-color: #fff; padding: .5em; text-shadow: #f5f5f5 0 1px 0; border-radius: 2px; opacity: 0.9; position: absolute; }
+.hidden { display: none; }
 </style>
 </head>
 <body>
@@ -60,7 +62,13 @@ var confusion;
  *      and if the document texts contain multibyte characters (e.g., Chinese idiographic writing systems). */
 var isKT = false;
 
+// PMB: List top N NB category matches for each text in the confusion popup window
+var matchesToShow = 5;
+
 var wordPattern = XRegExp("\\p{L}[\\p{L}\\p{P}]*\\p{L}", "g");
+
+// PMB: tooltip for target row,col mouseover
+var tooltip;
 
 d3.select("#close")
 .on("click", function () { d3.select("#modal").style("visibility", "hidden"); });
@@ -73,6 +81,9 @@ function plotConfusion() {
 
 	var w = 800,
 	    h = 800;
+
+        tooltip = d3.select('#confusion').append('div')
+              .attr('class', 'hidden tooltip');
 
         d3.select("#loading").style("visibility", "hidden");
 
@@ -131,16 +142,35 @@ function plotConfusion() {
 	.attr("height", h)
     .on("mousemove", function () {
 		vis.selectAll("line.guide").style("opacity", 0.0);
-		var mousePoint = d3.mouse(this);
+                var mousePoint = d3.mouse(this);
+                // PMB tooltip for row,column target
+                var verticalLabel="NA", horizontalLabel="NA", verticalLabelID=-1, horizontalLabelID=-1;
+                var hits = 0;
 		if (mousePoint[0] >= left && mousePoint[0] <= right) {
 			var labelID = Math.round((mousePoint[0] - left) * (labels.length - 0.5) / (right - left));
-			d3.select("#vert" + labelID).style("opacity", 1.0);
+                        d3.select("#vert" + labelID).style("opacity", 1.0);
+                        verticalLabelID = labelID;
+                        verticalLabel = labels[labelID];
 		} 
 		if (mousePoint[1] >= top && mousePoint[1] <= bottom) {
 			var labelID = Math.round((mousePoint[1] - top) * (labels.length - 0.5) / (bottom - top));
 			d3.select("#hor" + labelID).style("opacity", 1.0);
-		} 
-	})
+                        horizontalLabelID = labelID;
+                        horizontalLabel = labels[labelID];
+                }
+                if ((verticalLabelID >= 0) && (horizontalLabelID >= 0)) {
+                  hits = confusion[horizontalLabelID][verticalLabelID];
+                }
+                if ((verticalLabel != "NA") && (horizontalLabel != "NA")) {
+                  tooltip.classed('hidden', false)
+                    .attr('style', 'left:' + (mousePoint[0] + 15) + 'px; top:' + (mousePoint[1] - 35) + 'px')
+                    .html("Original: " + horizontalLabel + ", NB: " + verticalLabel + ", texts: " + hits);
+                }
+        })
+    .on('mouseout', function() {
+                tooltip.classed('hidden', true);
+                d3.select(this).style("stroke-opacity", "0");
+    })
     .on("click", function () {
 		vis.selectAll("line.guide").style("opacity", 0.0);
 		var mousePoint = d3.mouse(this);
@@ -161,7 +191,13 @@ function plotConfusion() {
                           } else {
                             metaString = doc['id'];
                           }
-                          return '<p><b>' + metaString + ':</b>  ' + colorizeText(doc) + '</p>'; 
+                          var catString = '<b>Top matches:</b> ';
+                          var topMatches = [];
+                          for (var c=0; c < Math.min(labels.length, matchesToShow); c++) {
+                            topMatches.push(labels[doc['sortedLabelWeights'][c]]);
+                          }
+                          catString += topMatches.join(', ');
+                          return '<p><b>' + metaString + ':</b>  ' + colorizeText(doc) + '<br>' + catString + '</p>';
                         });
 			d3.select("#modal").style("visibility", "visible");
 		} 
@@ -323,6 +359,7 @@ function leaveOneOut( doc ) {
 	labelSums[doc.labelID] -= doc.tokens.length;
 
 	doc.labelWeights = Array(labels.length);
+	doc.sortedLabelWeights = Array(labels.length);
 	labels.forEach(function (label, labelID) {
 		doc.labelWeights[labelID] = doc.tokens.length * (logSmoothing - Math.log(labelSums[labelID] + words.length * smoothing));
 	});
@@ -349,7 +386,9 @@ function leaveOneOut( doc ) {
 			doc.maxLabelID = labelID;
 		}
 	});
-	
+
+        doc.sortedLabelWeights = Object.keys(doc.labelWeights).sort(function(a,b){return doc.labelWeights[b]-doc.labelWeights[a]});
+
 	confusion[doc.labelID][doc.maxLabelID] += 1;
 	
 	// Add the document back in
