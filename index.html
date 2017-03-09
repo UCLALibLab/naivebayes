@@ -194,7 +194,8 @@ function plotConfusion() {
                           var catString = '<b>Top matches:</b> ';
                           var topMatches = [];
                           for (var c=0; c < Math.min(labels.length, matchesToShow); c++) {
-                            topMatches.push(labels[doc['sortedLabelWeights'][c]]);
+                            var thisLabelID = doc['sortedLabelWeights'][c];
+                            topMatches.push(labels[thisLabelID] + ': ' + doc.labelWeights[thisLabelID].toFixed(2));
                           }
                           catString += topMatches.join(', ');
                           return '<p><b>' + metaString + ':</b>  ' + colorizeText(doc) + '<br>' + catString + '</p>';
@@ -217,9 +218,9 @@ function colorizeText(doc) {
                         // Find the token in the originalText
                         // Change it to a span color object
                         if (isKT) {
-                          var regEx = new RegExp("(" + wordText + ")", "ig");
+                          var regEx = new RegExp("\(" + wordText + "\)", "ig");
                         } else {
-                          var regEx = new RegExp("\\b(" + wordText + ")\\b", "ig");
+                          var regEx = new RegExp("\\b\(" + wordText + "\)\\b", "ig");
                         }
                         docText = docText.replace(regEx, "<font color='" + tokenColor + "'>$1</font>");
                 } 
