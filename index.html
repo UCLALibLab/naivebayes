@@ -146,6 +146,7 @@ function plotConfusion() {
                 // PMB tooltip for row,column target
                 var verticalLabel="NA", horizontalLabel="NA", verticalLabelID=-1, horizontalLabelID=-1;
                 var hits = 0;
+                var secondHits = 0;
 		if (mousePoint[0] >= left && mousePoint[0] <= right) {
 			var labelID = Math.round((mousePoint[0] - left) * (labels.length - 0.5) / (right - left));
                         d3.select("#vert" + labelID).style("opacity", 1.0);
@@ -160,11 +161,12 @@ function plotConfusion() {
                 }
                 if ((verticalLabelID >= 0) && (horizontalLabelID >= 0)) {
                   hits = confusion[horizontalLabelID][verticalLabelID];
+                  secondHits = confusion[horizontalLabelID][verticalLabelID];
                 }
                 if ((verticalLabel != "NA") && (horizontalLabel != "NA")) {
                   tooltip.classed('hidden', false)
                     .attr('style', 'left:' + (mousePoint[0] + 15) + 'px; top:' + (mousePoint[1] - 35) + 'px')
-                    .html("Original: " + horizontalLabel + ", NB: " + verticalLabel + ", texts: " + hits);
+                    .html("Original: " + horizontalLabel + " | NB first match: " + verticalLabel + ", texts: " + hits);
                 }
         })
     .on('mouseout', function() {
