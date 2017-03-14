@@ -62,6 +62,11 @@ var confusion;
  *      and if the document texts contain multibyte characters (e.g., Chinese idiographic writing systems). */
 var isKT = false;
 
+/* PMB: When true, enables enhanced match visualizations: matches on second,
+ * third, fourth and fifth NB categories count as a fraction of a "hit"
+ */
+var extraMatches = true;
+
 // PMB: List top N NB category matches for each text in the confusion popup window
 var matchesToShow = 5;
 
@@ -92,7 +97,7 @@ function plotConfusion() {
 	.attr("width", w)
         .attr("height", h);
 
-	var maxCell = d3.max(confusion, function( row ) { return d3.max(row); });
+        var maxCell = d3.max(confusion, function( row ) { return d3.max(row, function (cell) { return cell['totalHits'] }); });
 
 	var labelScale = d3.scale.ordinal().domain(d3.range(labels.length)).rangePoints([left, right]);
 	var radiusScale = d3.scale.sqrt().domain([0, maxCell]).range([0, 2 * right / labels.length]);
@@ -127,11 +132,11 @@ function plotConfusion() {
 	});
 
         confusion.forEach(function(cells, row) {
-		cells.forEach(function(count, col) {
+		cells.forEach(function(cell, col) {
 		    vis.append("circle")
 			.attr("cx", function(link) { return labelScale(col); })
 			.attr("cy", function(link) { return labelScale(row); })
-			.attr("r", function (link) { return radiusScale(count); })
+			.attr("r", function (link) { return radiusScale(cell['totalHits']); })
 			.style("fill", function () { return row == col ? "#88f" : "#f88"; })
 			.style("opacity", function () { return row == col ? 0.3 : 0.7; });
 		});
@@ -160,13 +165,19 @@ function plotConfusion() {
                         horizontalLabel = labels[labelID];
                 }
                 if ((verticalLabelID >= 0) && (horizontalLabelID >= 0)) {
-                  hits = confusion[horizontalLabelID][verticalLabelID];
-                  secondHits = confusion[horizontalLabelID][verticalLabelID];
+                  hits = confusion[horizontalLabelID][verticalLabelID]['rankedHits'][0];
+                  if (extraMatches && (matchesToShow > 1)) {
+                    secondHits = confusion[horizontalLabelID][verticalLabelID]['rankedHits'][1];
+                  }
                 }
                 if ((verticalLabel != "NA") && (horizontalLabel != "NA")) {
+                  var ttText = "Original: " + horizontalLabel + " | NB: " + verticalLabel + "<br>top match texts: " + hits;
+                  if (secondHits > 0) {
+                    ttText += ", second match texts: " + secondHits;
+                  }
                   tooltip.classed('hidden', false)
                     .attr('style', 'left:' + (mousePoint[0] + 15) + 'px; top:' + (mousePoint[1] - 35) + 'px')
-                    .html("Original: " + horizontalLabel + " | NB first match: " + verticalLabel + ", texts: " + hits);
+                    .html(ttText);
                 }
         })
     .on('mouseout', function() {
@@ -197,7 +208,11 @@ function plotConfusion() {
                           var topMatches = [];
                           for (var c=0; c < Math.min(labels.length, matchesToShow); c++) {
                             var thisLabelID = doc['sortedLabelWeights'][c];
-                            topMatches.push(labels[thisLabelID] + ': ' + doc.labelWeights[thisLabelID].toFixed(2));
+                            if (thisLabelID == labelID) {
+                              topMatches.push("<b>" + labels[thisLabelID] + ": " + doc.labelWeights[thisLabelID].toFixed(2) + "</b>");
+                            } else {
+                              topMatches.push(labels[thisLabelID] + ': ' + doc.labelWeights[thisLabelID].toFixed(2));
+                            }
                           }
                           catString += topMatches.join(', ');
                           return '<p><b>' + metaString + ':</b>  ' + colorizeText(doc) + '<br>' + catString + '</p>';
@@ -393,9 +408,15 @@ function leaveOneOut( doc ) {
 
         doc.sortedLabelWeights = Object.keys(doc.labelWeights).sort(function(a,b){return doc.labelWeights[b]-doc.labelWeights[a]});
 
-	confusion[doc.labelID][doc.maxLabelID] += 1;
-        // XXX PMB add in second-rank matches
-        confusion[doc.labelID][doc['sortedLabelWeights'][1]] += .5
+	confusion[doc.labelID][doc.maxLabelID]['totalHits'] += 1;
+	confusion[doc.labelID][doc.maxLabelID]['rankedHits'][0] += 1;
+        // XXX PMB add in lower-ranked matches
+        if (extraMatches) { 
+          for (var m = (matchesToShow-1); m > 0; m--) {
+            confusion[doc.labelID][doc['sortedLabelWeights'][m]]['totalHits'] += 1 / (m + 1)
+            confusion[doc.labelID][doc['sortedLabelWeights'][m]]['rankedHits'][m] += 1 
+          }
+        }
 	
 	// Add the document back in
 	doc.tokens.forEach(function (wordID) {
@@ -489,14 +510,18 @@ d3.text("input.txt",
 function (error, text) {
 	//var start = +new Date();
 	documents = d3.tsv.parseRows(text, parseLine);
-	//var end = +new Date();
+        //var end = +new Date();
+        matchesToShow = Math.min(matchesToShow, labels.length)
 		
         confusion = Array(labels.length);
 
         for (var row = 0; row < labels.length; row++) {
 		confusion[row] = Array(labels.length);
 		for (var col = 0; col < labels.length; col++) {
-			confusion[row][col] = 0;
+                  confusion[row][col] = {"totalHits": 0, "rankedHits": Array(matchesToShow)};
+                  for (var m = 0; m < matchesToShow; m++) {
+                    confusion[row][col]["rankedHits"][m] = 0;
+                  }
 		}
 	}
 	
